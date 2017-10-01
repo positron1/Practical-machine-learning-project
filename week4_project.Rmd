@@ -1,0 +1,123 @@
+---
+title: "Practical Mechine Learning project"
+author: "Yue Yang"
+date: "September 23, 2017"
+output: html_document
+---
+
+##Summary
+This is the course project for practical mechine learning. 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+##Importing Data
+```{r,echo=T,cache=TRUE}
+training <- read.csv("C:/Users/Yue Yang/Desktop/R project/practical mechine learning/pml-training.csv",header = T)
+testing <- read.csv("C:/Users/Yue Yang/Desktop/R project/practical mechine learning/pml-testing.csv",header = T)
+```
+
+##Loading libraries
+```{r,results='hide',message=F,warning=F}
+library(caret)
+library(ggplot2)
+library(rpart)
+library(randomForest)
+```
+
+For reproducibility concerns, we set the seed for random numbers. 
+```{r}
+set.seed(3523)
+```
+
+##Cleaning data
+In this step the varibles with "NA" values and variables that are irrelevant in the dataset are removed.
+
+```{r,cache=T}
+training <- training[, colSums(is.na(training)) == 0] 
+testing  <- testing[, colSums(is.na(testing)) == 0] 
+training <- training[, -grepl("X|name|time|window", names(testing))]
+testing <- testing[, -grepl("X|name|time|window", names(testing))]
+```
+
+And to make the training more efficient, we only keep the predictors that are of numeric type.
+
+```{r,cache=T}
+sub_training  <- training[, sapply(training, is.numeric)]
+sub_testing   <- testing[, sapply(testing, is.numeric)]
+sub_training$classe <- training$classe
+```
+
+##Training model
+At this step we use the training set to train a model that can give us good prediction about human activity. Here we choose the random forest method for a high performance.  In order to train the model in a reasonable amount of time, we don't use all of the data. In one case we extract only 10% of the data to train a model called "model 1". Then we extract 20% of the data to train another model called "model 2". We compare these 2 models to see how the size of training set can affect the accuracy and the predictions. 
+
+```{r}
+inTrain   <- createDataPartition(y=sub_training$classe,p=0.1,list = F)
+training1<-sub_training[inTrain,]
+inTrain   <- createDataPartition(y=sub_training$classe,p=0.2,list = F)
+training2<-sub_training[inTrain,]
+```
+
+In order to see how well the model is before applying it to the test data, we further divide the training data into 2 parts: 75% of it will be used to train the model, the remaining 25% will be used to validate the model.
+
+```{r,cache=T}
+inTrain   <- createDataPartition(y=training1$classe,p=0.75,list = F)
+validating1<-training1[-inTrain,]
+training1<-training1[inTrain,]
+
+inTrain   <- createDataPartition(y=training2$classe,p=0.75,list = F)
+validating2<-training2[-inTrain,]
+training2<-training2[inTrain,]
+```
+
+The size of the training sets for "model 1" and "model 2" are as follows:
+```{r,cache=T}
+dim(training1);dim(training2);
+```
+Then we train the 2 models using "random forrest" method by default settings:
+```{r,cache=T}
+fit1 <- train(classe~.,data=training1,method="rf")
+fit2 <- train(classe~.,data=training2,method="rf")
+```
+
+##In sample and out of sample error
+Before we do predictions we apply the fitted models to their training sets and
+their validation sets to see their in sample and out of sample errors respectively:
+
+```{r,cache=T}
+confusionMatrix(predict(fit1,training1),training1$classe)
+confusionMatrix(predict(fit1,validating1),validating1$classe)
+confusionMatrix(predict(fit2,training2),training2$classe)
+confusionMatrix(predict(fit2,validating2),validating2$classe)
+```
+From the results we can see the in sample error for both models is negligible, showing a low bias for the "random forrest" method. But the out of sample error for model 1 is larger than that of model 2, showing that insufficient size of training set do lead to a higher variance.
+
+##The predictions
+The predictions on the testing set are
+```{r,cache=T}
+pred1<-predict(fit1,sub_testing)
+pred2<-predict(fit2,sub_testing)
+pred1;pred2;
+```
+
+##Relative importance of the predictors
+In the fitting of the 2 models we have used 55 predictors, but their influences are not equally important. To see the relative importance of the predictors, we use "varImp" function in the caret package. Taking the model 2 for example,we show the top 10 most important predictors:
+```{r,cache=T}
+varImp(fit2)
+```
+We can try to keep only the top 5 predictors and do the fitting as before:
+```{r,cache=T,echo=F}
+sub_training_5<-sub_training[,c("raw_timestamp_part_1","roll_belt","num_window","pitch_forearm","magnet_dumbbell_z","classe")]
+sub_testing_5<-sub_testing[,c("raw_timestamp_part_1","roll_belt","num_window","pitch_forearm","magnet_dumbbell_z")];
+inTrain   <- createDataPartition(y=sub_training_5$classe,p=0.2,list = F)
+training_5<-sub_training_5[inTrain,]
+inTrain   <- createDataPartition(y=training_5$classe,p=0.75,list = F)
+validating3<-training_5[-inTrain,]
+training3<-training_5[inTrain,]
+fit3 <- train(classe~.,data=training3,method="rf")
+```
+The prediction is
+```{r,cache=T}
+pred3<-predict(fit3,sub_testing_5)
+pred3
+```
+Which is the same as the result using all predictors.
